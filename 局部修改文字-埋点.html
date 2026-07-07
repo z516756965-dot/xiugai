@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 局部图像改字工作流 (高阶交互版)</title>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-hover: #7c3aed;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --radius: 12px;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background-color: var(--background); color: var(--text-main); }
+        
+        /* 顶部导航 */
+        .header { background: var(--surface); padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); z-index: 10; }
+        .header h1 { margin: 0; font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px;}
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .badge { background: linear-gradient(135deg, #8b5cf6, #3b82f6); color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: normal; }
+        .input-key { padding: 8px 12px; width: 280px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; outline: none; transition: 0.2s; }
+        .input-key:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(139,92,246,0.2); }
+        
+        .btn { padding: 10px 16px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-ai { background: linear-gradient(135deg, #8b5cf6, #d946ef); color: white; }
+        .btn-ai:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text-main); }
+        .btn-secondary:hover { background: var(--background); }
+        .btn-danger { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+        .btn-danger:hover { background: #ffe4e6; }
+        .utility-actions { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+        .utility-actions .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .action-group { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: var(--background); border: 1px solid var(--border); border-radius: 10px; }
+        .segment-btn { border: none; background: transparent; color: var(--text-muted); border-radius: 7px; padding: 9px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .segment-btn.active { background: var(--surface); color: var(--primary); box-shadow: 0 1px 2px rgb(15 23 42 / 0.08); }
+        .field { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+        .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+        .field input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; }
+        .field input:focus { border-color: var(--primary); }
+        .hidden-panel { display: none; }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 24px; box-sizing: border-box; }
+        .modal-backdrop.show { display: flex; }
+        .history-modal { width: min(760px, 100%); max-height: min(720px, 88vh); background: var(--surface); border-radius: var(--radius); box-shadow: 0 24px 60px rgb(15 23 42 / 0.24); display: flex; flex-direction: column; overflow: hidden; }
+        .history-header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .history-header h2 { margin: 0; font-size: 16px; }
+        .history-list { padding: 14px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; background: var(--background); }
+        .history-item { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 8px; cursor: pointer; text-align: left; transition: 0.2s; }
+        .history-item:hover { border-color: var(--primary); box-shadow: var(--shadow); transform: translateY(-1px); }
+        .history-thumb { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #e2e8f0; border-radius: 8px; border: 1px solid var(--border); }
+        .history-meta { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+        .history-label { font-size: 13px; font-weight: 600; color: var(--text-main); }
+        .history-time { font-size: 12px; color: var(--text-muted); }
+        .history-empty { padding: 42px 18px; color: var(--text-muted); text-align: center; grid-column: 1 / -1; }
+
+        /* 主体布局 */
+        .container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* 左侧面板 */
+        .sidebar { width: 340px; background: var(--surface); padding: 24px; display: flex; flex-direction: column; gap: 20px; border-right: 1px solid var(--border); overflow-y: auto; z-index: 10; }
+        .section-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+        textarea { width: 100%; height: 90px; padding: 12px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; resize: vertical; font-family: inherit; font-size: 14px; outline: none; transition: 0.2s; }
+        textarea:focus { border-color: var(--primary); }
+        .hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+        /* 右侧工作区 */
+        .workspace { flex: 1; position: relative; display: flex; flex-direction: column; background: #e2e8f0; background-image: linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; overflow: hidden; }
+        .toolbar { position: absolute; top: 20px; right: 20px; z-index: 10; display: flex; gap: 10px; }
+
+        #drop-zone { position: absolute; inset: 24px; border: 2px dashed #94a3b8; border-radius: var(--radius); background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); font-size: 16px; z-index: 5; cursor: pointer; transition: 0.3s; }
+        #drop-zone.dragover { background: rgba(241, 245, 249, 0.95); border-color: var(--primary); color: var(--primary); }
+        #drop-zone.hidden { opacity: 0; pointer-events: none; }
+        
+        .canvas-container { flex: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+        
+        /* 核心修改：利用 object-fit 等比例缩放 canvas，确保完整展示 */
+        canvas { 
+            box-shadow: var(--shadow); 
+            background: white; 
+            max-width: 100%; 
+            max-height: 100%; 
+            object-fit: contain; /* 关键样式：容器内自适应 */
+            cursor: crosshair;
+        }
+        #file-input { display: none; }
+
+        /* Toast 提示 */
+        #toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px); background: #1e293b; color: white; padding: 10px 20px; border-radius: 30px; font-size: 14px; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 999; box-shadow: var(--shadow); }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+    <div id="toast"></div>
+
+    <div class="header">
+        <h1>AI 局部图像改字 <span class="badge">Gemini OCR + 图生图大模型</span></h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="undo-btn" disabled>返回上一步</button>
+            <button class="btn btn-secondary" id="redo-btn" disabled>返回下一步</button>
+            <button class="btn btn-danger" id="original-btn" disabled>返回原稿</button>
+            <button class="btn btn-secondary" id="history-btn">历史记录</button>
+            <input type="password" id="api-key" class="input-key" placeholder="在此输入 Google API 密钥 (自动保存)">
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="history-modal">
+        <div class="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+            <div class="history-header">
+                <h2 id="history-title">本地历史记录</h2>
+                <button class="btn btn-secondary" id="history-close-btn">关闭</button>
+            </div>
+            <div class="history-list" id="history-list"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div>
+                <div class="section-title">操作模式</div>
+                <div class="segmented" id="mode-switch">
+                    <button class="segment-btn active" data-mode="text">修改文字</button>
+                    <button class="segment-btn" data-mode="custom">自定义修改</button>
+                </div>
+            </div>
+
+            <div>
+                <div class="section-title">选区方式</div>
+                <div class="segmented" id="selection-switch">
+                    <button class="segment-btn active" data-selection="rect">矩形</button>
+                    <button class="segment-btn" data-selection="lasso">套索</button>
+                </div>
+                <div class="hint" style="margin-top: 8px;">矩形支持拖拽调整；套索按住鼠标沿目标边缘圈选，松开后自动闭合。</div>
+            </div>
+
+            <div id="ocr-panel">
+                <div class="section-title">👁️ 1. 选区识别 (OCR)</div>
+                <div class="hint" style="margin-bottom: 8px;">在右侧选中需要识别或修改的局部内容。</div>
+                <textarea id="recognized-text" placeholder="识别结果将显示在这里..." readonly style="background: var(--background);"></textarea>
+                <button class="btn btn-primary" id="ocr-btn" style="width: 100%; margin-top: 10px;">✨ 识别选中区域文字</button>
+            </div>
+            
+            <div id="ocr-divider" style="height: 1px; background: var(--border); margin: 10px 0;"></div>
+            
+            <div id="text-mode-panel">
+                <div class="section-title" style="color: var(--primary);">🚀 2. AI 局部重绘 (Inpainting)</div>
+                <div class="hint" style="margin-bottom: 8px;">输入新文字，AI 将融合原图背景进行重绘</div>
+                <textarea id="new-text" placeholder="输入你想替换的新文字..."></textarea>
+                <div class="action-group">
+                    <button class="btn btn-ai generate-btn" data-generate-mode="text">立即修改</button>
+                    <button class="btn btn-secondary regenerate-btn" disabled>重新生成</button>
+                </div>
+            </div>
+
+            <div id="custom-mode-panel" class="hidden-panel">
+                <div class="section-title" style="color: var(--primary);">🚀 2. 自定义局部修改</div>
+                <div class="hint" style="margin-bottom: 8px;">直接描述你要改的内容，如颜色、大小、位置、插图替换等。</div>
+                <textarea id="custom-instruction" placeholder="例如：把选中的插图换成蓝色礼盒；把标题改成金色并放大 20%；把人物移动到右侧..."></textarea>
+                <div class="action-group">
+                    <button class="btn btn-ai generate-btn" data-generate-mode="custom">执行自定义修改</button>
+                    <button class="btn btn-secondary regenerate-btn" disabled>重新生成</button>
+                </div>
+            </div>
+
+            <div class="utility-actions">
+                <button class="btn btn-primary" id="download-btn" disabled>下载当前海报</button>
+            </div>
+        </div>
+
+        <div class="workspace" id="workspace">
+            <div class="toolbar" id="toolbar" style="display: none;">
+                <button class="btn btn-secondary" id="reset-btn">清空重来</button>
+            </div>
+            
+            <div id="drop-zone">点击选择图片、拖拽到此区域，或 Ctrl+V 粘贴</div>
+            <input type="file" id="file-input" accept="image/*">
+            
+            <div class="canvas-container">
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiKeyInput = document.getElementById('api-key');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const ocrBtn = document.getElementById('ocr-btn');
+        const generateButtons = document.querySelectorAll('.generate-btn');
+        const regenerateButtons = document.querySelectorAll('.regenerate-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const undoBtn = document.getElementById('undo-btn');
+        const redoBtn = document.getElementById('redo-btn');
+        const originalBtn = document.getElementById('original-btn');
+        const historyBtn = document.getElementById('history-btn');
+        const historyModal = document.getElementById('history-modal');
+        const historyCloseBtn = document.getElementById('history-close-btn');
+        const historyList = document.getElementById('history-list');
+        const resetBtn = document.getElementById('reset-btn');
+        const toolbar = document.getElementById('toolbar');
+        const ocrPanel = document.getElementById('ocr-panel');
+        const ocrDivider = document.getElementById('ocr-divider');
+        const recognizedTextEl = document.getElementById('recognized-text');
+        const newTextEl = document.getElementById('new-text');
+        const customInstructionEl = document.getElementById('custom-instruction');
+        const textModePanel = document.getElementById('text-mode-panel');
+        const customModePanel = document.getElementById('custom-mode-panel');
+        const modeButtons = document.querySelectorAll('#mode-switch .segment-btn');
+        const selectionButtons = document.querySelectorAll('#selection-switch .segment-btn');
+        const toastEl = document.getElementById('toast');
+
+        // ================= 核心画布状态机 =================
+        let currentImage = null;
+        let originalImageDataUrl = '';
+        let currentMaterialId = '';
+        let versionHistory = [];
+        let versionIndex = -1;
+        let rect = null; // {x, y, w, h}
+        let lassoPoints = [];
+        let editMode = 'text';
+        let selectionMode = 'rect';
+        let lastGeneration = null;
+        let action = null; // 'draw', 'drag', 'resize-tl', 'resize-tr', 'resize-bl', 'resize-br', 'lasso'
+        let dragOffsetX = 0, dragOffsetY = 0;
+        const handleSize = 10; // 控制柄大小
+        const HISTORY_DB_NAME = 'poster_edit_history_db';
+        const HISTORY_STORE_NAME = 'records';
+        const HISTORY_LIMIT = 50;
+
+        function createMaterialId() {
+            return `material-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        }
+
+        function showToast(message, duration = 3000) {
+            toastEl.textContent = message; toastEl.classList.add('show');
+            setTimeout(() => toastEl.classList.remove('show'), duration);
+        }
+
+        function updateUtilityButtons() {
+            const hasImage = Boolean(currentImage);
+            downloadBtn.disabled = !hasImage;
+            undoBtn.disabled = versionIndex <= 0;
+            redoBtn.disabled = versionIndex < 0 || versionIndex >= versionHistory.length - 1;
+            originalBtn.disabled = !hasImage || !originalImageDataUrl;
+            regenerateButtons.forEach((button) => {
+                button.disabled = !hasImage || !lastGeneration;
+            });
+        }
+
+        function getCurrentImageDataUrl() {
+            if (!currentImage) return '';
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCanvas.getContext('2d').drawImage(currentImage, 0, 0);
+            return tempCanvas.toDataURL('image/png');
+        }
+
+        function setCurrentImageFromDataUrl(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    rect = null; lassoPoints = [];
+                    renderCanvas();
+                    updateUtilityButtons();
+                    resolve();
+                };
+                img.onerror = () => reject(new Error('图片恢复失败'));
+                img.src = dataUrl;
+            });
+        }
+
+        function openHistoryDb() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(HISTORY_DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains(HISTORY_STORE_NAME)) {
+                        db.createObjectStore(HISTORY_STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function withHistoryStore(mode, callback) {
+            const db = await openHistoryDb();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(HISTORY_STORE_NAME, mode);
+                const store = tx.objectStore(HISTORY_STORE_NAME);
+                const result = callback(store);
+                tx.oncomplete = () => { db.close(); resolve(result); };
+                tx.onerror = () => { db.close(); reject(tx.error); };
+            });
+        }
+
+        function loadImageFromDataUrl(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('历史图片加载失败'));
+                img.src = dataUrl;
+            });
+        }
+
+        async function createHistoryThumbnail(dataUrl) {
+            const img = await loadImageFromDataUrl(dataUrl);
+            const maxW = 220;
+            const maxH = 160;
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = Math.max(1, Math.round(img.width * scale));
+            thumbCanvas.height = Math.max(1, Math.round(img.height * scale));
+            thumbCanvas.getContext('2d').drawImage(img, 0, 0, thumbCanvas.width, thumbCanvas.height);
+            return thumbCanvas.toDataURL('image/jpeg', 0.78);
+        }
+
+        async function getLocalHistoryRecords() {
+            return withHistoryStore('readonly', (store) => {
+                const request = store.getAll();
+                return new Promise((resolve, reject) => {
+                    request.onsuccess = () => resolve(request.result.sort((a, b) => b.createdAt - a.createdAt));
+                    request.onerror = () => reject(request.error);
+                });
+            });
+        }
+
+        async function saveLocalHistoryRecord(dataUrl, label) {
+            if (!currentMaterialId) currentMaterialId = createMaterialId();
+            try {
+                const record = {
+                    id: currentMaterialId,
+                    createdAt: Date.now(),
+                    label,
+                    dataUrl,
+                    thumb: await createHistoryThumbnail(dataUrl)
+                };
+
+                await withHistoryStore('readwrite', (store) => {
+                    store.put(record);
+                    return null;
+                });
+
+                const records = await getLocalHistoryRecords();
+                const overflow = records.slice(HISTORY_LIMIT);
+                if (overflow.length) {
+                    await withHistoryStore('readwrite', (store) => {
+                        overflow.forEach((item) => store.delete(item.id));
+                        return null;
+                    });
+                }
+            } catch (error) {
+                console.warn('保存本地历史失败', error);
+            }
+        }
+
+        function formatHistoryTime(timestamp) {
+            return new Date(timestamp).toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        async function renderHistoryList() {
+            historyList.innerHTML = '<div class="history-empty">正在读取本地历史...</div>';
+            const records = await getLocalHistoryRecords();
+            if (!records.length) {
+                historyList.innerHTML = '<div class="history-empty">暂无历史记录。生成完成后会自动保留最近 50 条。</div>';
+                return;
+            }
+
+            historyList.innerHTML = '';
+            records.forEach((record, index) => {
+                const item = document.createElement('button');
+                item.className = 'history-item';
+                item.type = 'button';
+                item.innerHTML = `
+                    <img class="history-thumb" src="${record.thumb}" alt="历史记录缩略图 ${index + 1}">
+                    <span class="history-meta">
+                        <span class="history-label">${record.label || '海报版本'}</span>
+                        <span class="history-time">${formatHistoryTime(record.createdAt)}</span>
+                    </span>
+                `;
+                item.addEventListener('click', async () => {
+                    await loadHistoryRecord(record);
+                });
+                historyList.appendChild(item);
+            });
+        }
+
+        async function loadHistoryRecord(record) {
+            try {
+                await setCurrentImageFromDataUrl(record.dataUrl);
+                originalImageDataUrl = record.dataUrl;
+                currentMaterialId = record.id || createMaterialId();
+                resetVersionHistory(record.dataUrl);
+                lastGeneration = null;
+                dropZone.classList.add('hidden');
+                toolbar.style.display = 'flex';
+                historyModal.classList.remove('show');
+                showToast('✅ 已载入历史记录');
+            } catch (error) {
+                showToast('❌ ' + error.message);
+            }
+        }
+
+        function resetVersionHistory(dataUrl = '') {
+            versionHistory = dataUrl ? [dataUrl] : [];
+            versionIndex = dataUrl ? 0 : -1;
+            updateUtilityButtons();
+        }
+
+        function recordVersion(dataUrl, label = '海报版本') {
+            if (!dataUrl) return;
+            if (versionIndex >= 0) versionHistory = versionHistory.slice(0, versionIndex + 1);
+            versionHistory.push(dataUrl);
+            versionIndex = versionHistory.length - 1;
+            saveLocalHistoryRecord(dataUrl, label);
+            updateUtilityButtons();
+        }
+
+        async function goToVersion(nextIndex, message) {
+            if (nextIndex < 0 || nextIndex >= versionHistory.length) return;
+            try {
+                await setCurrentImageFromDataUrl(versionHistory[nextIndex]);
+                versionIndex = nextIndex;
+                updateUtilityButtons();
+                showToast(message);
+            } catch (error) {
+                showToast('❌ ' + error.message);
+            }
+        }
+
+        const savedKey = localStorage.getItem('google_api_key');
+        if (savedKey) apiKeyInput.value = savedKey;
+        apiKeyInput.addEventListener('blur', () => {
+            if (apiKeyInput.value.trim()) { localStorage.setItem('google_api_key', apiKeyInput.value.trim()); showToast('🔑 密钥已保存'); }
+        });
+
+        function resetWorkspace() {
+            currentImage = null; originalImageDataUrl = ''; currentMaterialId = ''; versionHistory = []; versionIndex = -1; lastGeneration = null; rect = null; lassoPoints = []; action = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = 0; canvas.height = 0;
+            dropZone.classList.remove('hidden'); toolbar.style.display = 'none';
+            recognizedTextEl.value = ''; newTextEl.value = ''; customInstructionEl.value = '';
+            updateUtilityButtons();
+        }
+
+        function loadImage(file) {
+            if (!file || !file.type.startsWith('image/')) return showToast('❌ 请上传图片文件');
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    originalImageDataUrl = e.target.result;
+                    currentMaterialId = createMaterialId();
+                    resetVersionHistory(e.target.result);
+                    lastGeneration = null;
+                    // 画布的内在分辨率与原图完全一致，保证重绘和 OCR 质量
+                    canvas.width = img.width; 
+                    canvas.height = img.height;
+                    dropZone.classList.add('hidden');
+                    toolbar.style.display = 'flex';
+                    rect = null; lassoPoints = [];
+                    renderCanvas();
+                    updateUtilityButtons();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        resetBtn.addEventListener('click', resetWorkspace);
+        downloadBtn.addEventListener('click', () => {
+            const dataUrl = getCurrentImageDataUrl();
+            if (!dataUrl) return showToast('⚠️ 当前没有可下载的海报');
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            link.href = dataUrl;
+            link.download = `edited-poster-${timestamp}.png`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            showToast('✅ 海报已下载');
+        });
+        undoBtn.addEventListener('click', async () => {
+            if (versionIndex <= 0) return showToast('⚠️ 暂无上一步');
+            await goToVersion(versionIndex - 1, '↩️ 已返回上一步');
+        });
+        redoBtn.addEventListener('click', async () => {
+            if (versionIndex >= versionHistory.length - 1) return showToast('⚠️ 暂无下一步');
+            await goToVersion(versionIndex + 1, '↪️ 已返回下一步');
+        });
+        originalBtn.addEventListener('click', async () => {
+            if (!originalImageDataUrl) return showToast('⚠️ 暂无原稿');
+            await goToVersion(0, '✅ 已返回原稿');
+        });
+        historyBtn.addEventListener('click', async () => {
+            historyModal.classList.add('show');
+            try {
+                await renderHistoryList();
+            } catch (error) {
+                historyList.innerHTML = '<div class="history-empty">历史记录读取失败</div>';
+                console.error(error);
+            }
+        });
+        historyCloseBtn.addEventListener('click', () => {
+            historyModal.classList.remove('show');
+        });
+        historyModal.addEventListener('click', (event) => {
+            if (event.target === historyModal) historyModal.classList.remove('show');
+        });
+        modeButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                editMode = button.dataset.mode;
+                modeButtons.forEach((item) => item.classList.toggle('active', item === button));
+                ocrPanel.classList.toggle('hidden-panel', editMode !== 'text');
+                ocrDivider.classList.toggle('hidden-panel', editMode !== 'text');
+                textModePanel.classList.toggle('hidden-panel', editMode !== 'text');
+                customModePanel.classList.toggle('hidden-panel', editMode !== 'custom');
+            });
+        });
+
+        selectionButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                selectionMode = button.dataset.selection;
+                selectionButtons.forEach((item) => item.classList.toggle('active', item === button));
+                rect = null;
+                lassoPoints = [];
+                action = null;
+                canvas.style.cursor = selectionMode === 'lasso' ? 'crosshair' : 'crosshair';
+                renderCanvas();
+            });
+        });
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => loadImage(e.target.files[0]));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); loadImage(e.dataTransfer.files[0]); });
+        window.addEventListener('paste', (e) => { if (!currentImage) { for (let item of e.clipboardData.items) if (item.type.indexOf('image') !== -1) loadImage(item.getAsFile()); } });
+
+        // ================= 交互绘制逻辑 =================
+        function drawLassoSelection() {
+            if (lassoPoints.length < 2) return;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.beginPath();
+            ctx.rect(0, 0, canvas.width, canvas.height);
+            ctx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+            for (let i = 1; i < lassoPoints.length; i++) ctx.lineTo(lassoPoints[i].x, lassoPoints[i].y);
+            if (lassoPoints.length > 2 && action !== 'lasso') ctx.closePath();
+            ctx.fill('evenodd');
+
+            ctx.strokeStyle = '#8b5cf6';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 4]);
+            ctx.beginPath();
+            ctx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+            for (let i = 1; i < lassoPoints.length; i++) ctx.lineTo(lassoPoints[i].x, lassoPoints[i].y);
+            if (lassoPoints.length > 2 && action !== 'lasso') ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function renderCanvas() {
+            if (!currentImage) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(currentImage, 0, 0);
+            
+            if (rect && rect.w !== 0 && rect.h !== 0) {
+                const r = getNormalizedRect(); // 处理负宽高的绘制
+                
+                // 绘制外层半透明遮罩
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                ctx.beginPath();
+                ctx.rect(0, 0, canvas.width, canvas.height);
+                ctx.rect(r.x, r.y, r.w, r.h);
+                ctx.fill('evenodd'); // 反向镂空
+
+                // 绘制选区边框
+                ctx.strokeStyle = '#8b5cf6';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 4]);
+                ctx.strokeRect(r.x, r.y, r.w, r.h);
+                ctx.setLineDash([]); 
+
+                // 绘制四个角的控制柄
+                ctx.fillStyle = '#ffffff';
+                ctx.strokeStyle = '#8b5cf6';
+                ctx.lineWidth = 2;
+                const hs = handleSize;
+                const handles = [
+                    {x: r.x - hs/2, y: r.y - hs/2}, // tl
+                    {x: r.x + r.w - hs/2, y: r.y - hs/2}, // tr
+                    {x: r.x - hs/2, y: r.y + r.h - hs/2}, // bl
+                    {x: r.x + r.w - hs/2, y: r.y + r.h - hs/2} // br
+                ];
+                handles.forEach(h => {
+                    ctx.fillRect(h.x, h.y, hs, hs);
+                    ctx.strokeRect(h.x, h.y, hs, hs);
+                });
+            }
+
+            drawLassoSelection();
+        }
+
+        // 统一缩放坐标映射 (重要：因为使用了 object-fit，clientX/Y 需要转换)
+        function getMousePos(evt) {
+            const cssRect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / cssRect.width;
+            const scaleY = canvas.height / cssRect.height;
+            return {
+                x: (evt.clientX - cssRect.left) * scaleX,
+                y: (evt.clientY - cssRect.top) * scaleY
+            };
+        }
+
+        function getNormalizedRect() {
+            if (!rect) return null;
+            return {
+                x: rect.w < 0 ? rect.x + rect.w : rect.x,
+                y: rect.h < 0 ? rect.y + rect.h : rect.y,
+                w: Math.abs(rect.w),
+                h: Math.abs(rect.h)
+            };
+        }
+
+        // 判断鼠标位置对应的交互区域
+        function getHitZone(x, y) {
+            if (!rect) return null;
+            const r = getNormalizedRect();
+            const hs = handleSize * 2; // 增加点击热区
+            if (Math.abs(x - r.x) < hs && Math.abs(y - r.y) < hs) return 'resize-tl';
+            if (Math.abs(x - (r.x + r.w)) < hs && Math.abs(y - r.y) < hs) return 'resize-tr';
+            if (Math.abs(x - r.x) < hs && Math.abs(y - (r.y + r.h)) < hs) return 'resize-bl';
+            if (Math.abs(x - (r.x + r.w)) < hs && Math.abs(y - (r.y + r.h)) < hs) return 'resize-br';
+            if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return 'drag';
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!currentImage) return;
+            const pos = getMousePos(e);
+
+            if (selectionMode === 'lasso') {
+                action = 'lasso';
+                rect = null;
+                lassoPoints = [pos];
+                renderCanvas();
+                return;
+            }
+
+            lassoPoints = [];
+            const hit = getHitZone(pos.x, pos.y);
+            if (hit) {
+                action = hit;
+                if (hit === 'drag') {
+                    const r = getNormalizedRect();
+                    dragOffsetX = pos.x - r.x;
+                    dragOffsetY = pos.y - r.y;
+                    rect = r;
+                }
+            } else {
+                action = 'draw';
+                rect = { x: pos.x, y: pos.y, w: 0, h: 0 };
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!currentImage) return;
+            const pos = getMousePos(e);
+
+            if (selectionMode === 'lasso') {
+                canvas.style.cursor = 'crosshair';
+                if (action === 'lasso') {
+                    const lastPoint = lassoPoints[lassoPoints.length - 1];
+                    const distance = Math.hypot(pos.x - lastPoint.x, pos.y - lastPoint.y);
+                    if (distance > 3) lassoPoints.push(pos);
+                    renderCanvas();
+                }
+                return;
+            }
+
+            const hit = getHitZone(pos.x, pos.y);
+            if (hit === 'drag') canvas.style.cursor = 'move';
+            else if (hit === 'resize-tl' || hit === 'resize-br') canvas.style.cursor = 'nwse-resize';
+            else if (hit === 'resize-tr' || hit === 'resize-bl') canvas.style.cursor = 'nesw-resize';
+            else canvas.style.cursor = 'crosshair';
+
+            if (!action) return;
+
+            if (action === 'draw') {
+                rect.w = pos.x - rect.x;
+                rect.h = pos.y - rect.y;
+            } else if (action === 'drag') {
+                rect.x = pos.x - dragOffsetX;
+                rect.y = pos.y - dragOffsetY;
+            } else if (action.startsWith('resize')) {
+                const r = getNormalizedRect();
+                if (action === 'resize-tl') { rect.w = (r.x + r.w) - pos.x; rect.h = (r.y + r.h) - pos.y; rect.x = pos.x; rect.y = pos.y; }
+                if (action === 'resize-tr') { rect.w = pos.x - r.x; rect.h = (r.y + r.h) - pos.y; rect.x = r.x; rect.y = pos.y; }
+                if (action === 'resize-bl') { rect.w = (r.x + r.w) - pos.x; rect.h = pos.y - r.y; rect.x = pos.x; rect.y = r.y; }
+                if (action === 'resize-br') { rect.w = pos.x - r.x; rect.h = pos.y - r.y; rect.x = r.x; rect.y = r.y; }
+            }
+            renderCanvas();
+        });
+
+        const stopAction = () => {
+            if (!action) return;
+
+            if (action === 'lasso') {
+                if (lassoPoints.length < 8 || !getLassoBounds()) lassoPoints = [];
+                action = null;
+                renderCanvas();
+                return;
+            }
+
+            rect = getNormalizedRect();
+            if (rect && (rect.w < 10 || rect.h < 10)) rect = null;
+            action = null;
+            renderCanvas();
+        };
+        canvas.addEventListener('mouseup', stopAction);
+        canvas.addEventListener('mouseout', stopAction);
+
+        // ================= API 逻辑 =================
+        const TEXT_MODEL = 'gemini-3.5-flash';
+        const IMAGE_MODELS = [
+            'gemini-3.1-flash-image',
+            'gemini-3.1-flash-lite-image',
+        ];
+
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        function getLassoBounds() {
+            if (lassoPoints.length < 3) return null;
+            const xs = lassoPoints.map(point => point.x);
+            const ys = lassoPoints.map(point => point.y);
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            const maxX = Math.max(...xs);
+            const maxY = Math.max(...ys);
+            if (maxX - minX < 10 || maxY - minY < 10) return null;
+            return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+        }
+
+        function getSelectionBounds() {
+            if (selectionMode === "lasso" && lassoPoints.length >= 3) return getLassoBounds();
+            if (!rect) return null;
+            return getNormalizedRect();
+        }
+
+        function getValidRect() {
+            const r = getSelectionBounds();
+            if (!r) return null;
+            const x = Math.round(clamp(r.x, 0, canvas.width));
+            const y = Math.round(clamp(r.y, 0, canvas.height));
+            const w = Math.round(clamp(r.w, 1, canvas.width - x));
+            const h = Math.round(clamp(r.h, 1, canvas.height - y));
+            if (w < 10 || h < 10) return null;
+            return { x, y, w, h };
+        }
+
+        function getSelectionPromptDetails(crop) {
+            if (selectionMode !== "lasso" || lassoPoints.length < 3) {
+                return "Selection type: rectangle. Edit only inside the target rectangle.";
+            }
+
+            const step = Math.max(1, Math.floor(lassoPoints.length / 24));
+            const points = lassoPoints
+                .filter((_, index) => index % step === 0)
+                .map(point => [Math.round(point.x - crop.x), Math.round(point.y - crop.y)]);
+
+            return "Selection type: freeform lasso. Edit only inside the polygon defined by these crop-relative points: " + JSON.stringify(points) + ". Preserve everything outside this polygon.";
+        }
+
+        function createSelectionMask(patch) {
+            const maskCanvas = document.createElement('canvas');
+            maskCanvas.width = patch.crop.w;
+            maskCanvas.height = patch.crop.h;
+            const maskCtx = maskCanvas.getContext('2d');
+            maskCtx.fillStyle = '#fff';
+
+            if (patch.selectionMode === 'lasso' && patch.lassoPoints.length >= 3) {
+                maskCtx.beginPath();
+                maskCtx.moveTo(patch.lassoPoints[0].x, patch.lassoPoints[0].y);
+                for (let i = 1; i < patch.lassoPoints.length; i++) {
+                    maskCtx.lineTo(patch.lassoPoints[i].x, patch.lassoPoints[i].y);
+                }
+                maskCtx.closePath();
+                maskCtx.fill();
+            } else {
+                maskCtx.fillRect(patch.target.x, patch.target.y, patch.target.w, patch.target.h);
+            }
+
+            return maskCanvas;
+        }
+
+        function mergePatchIntoCurrentImage(patchImg, patch, baseImage = currentImage) {
+            const patchCanvas = document.createElement('canvas');
+            patchCanvas.width = patch.crop.w;
+            patchCanvas.height = patch.crop.h;
+            const patchCtx = patchCanvas.getContext('2d');
+            patchCtx.drawImage(patchImg, 0, 0, patch.crop.w, patch.crop.h);
+
+            patchCtx.globalCompositeOperation = 'destination-in';
+            patchCtx.drawImage(createSelectionMask(patch), 0, 0);
+            patchCtx.globalCompositeOperation = 'source-over';
+
+            const mergedCanvas = document.createElement('canvas');
+            mergedCanvas.width = canvas.width;
+            mergedCanvas.height = canvas.height;
+            const mergedCtx = mergedCanvas.getContext('2d');
+            mergedCtx.drawImage(baseImage, 0, 0);
+            mergedCtx.drawImage(patchCanvas, patch.crop.x, patch.crop.y);
+            return mergedCanvas;
+        }
+
+        function getCroppedBase64() {
+            const r = getValidRect();
+            if (!r) return null;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = r.w; tempCanvas.height = r.h;
+            tempCanvas.getContext('2d').drawImage(currentImage, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+            return tempCanvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+        }
+
+        function getPatchPayloadImage() {
+            const r = getValidRect();
+            if (!r) return null;
+
+            const padding = Math.round(Math.max(r.w, r.h) * 0.45);
+            const crop = {
+                x: clamp(r.x - padding, 0, canvas.width),
+                y: clamp(r.y - padding, 0, canvas.height),
+                w: 0,
+                h: 0
+            };
+            crop.w = clamp(r.x + r.w + padding, 0, canvas.width) - crop.x;
+            crop.h = clamp(r.y + r.h + padding, 0, canvas.height) - crop.y;
+            crop.x = Math.round(crop.x); crop.y = Math.round(crop.y);
+            crop.w = Math.round(crop.w); crop.h = Math.round(crop.h);
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = crop.w; tempCanvas.height = crop.h;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(currentImage, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+
+            return {
+                crop,
+                target: {
+                    x: r.x - crop.x,
+                    y: r.y - crop.y,
+                    w: r.w,
+                    h: r.h
+                },
+                selectionDetails: getSelectionPromptDetails(crop),
+                selectionMode,
+                lassoPoints: selectionMode === 'lasso'
+                    ? lassoPoints.map(point => ({
+                        x: Math.round(point.x - crop.x),
+                        y: Math.round(point.y - crop.y)
+                    }))
+                    : [],
+                base64: tempCanvas.toDataURL('image/png').split(',')[1]
+            };
+        }
+
+        async function callGemini(model, payload, apiKey) {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error?.message || `接口调用失败 (${response.status})`);
+            }
+            return data;
+        }
+
+        function summarizeJson(value, maxLength = 1600) {
+            const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+            if (!text) return '';
+            return text.length > maxLength ? text.slice(0, maxLength) + '\n...(已截断)' : text;
+        }
+
+        async function callGeminiImageEditWithModel(model, prompt, imageBase64, apiKey) {
+            const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                },
+                body: JSON.stringify({
+                    model,
+                    input: [
+                        { type: 'text', text: prompt },
+                        { type: 'image', mime_type: 'image/png', data: imageBase64 }
+                    ]
+                })
+            });
+
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const message = data.error?.message || summarizeJson(data) || '无错误详情';
+                throw new Error(`${model}: ${message} (${response.status})`);
+            }
+            return data;
+        }
+
+        async function callGeminiImageEdit(prompt, imageBase64, apiKey) {
+            const errors = [];
+
+            for (const model of IMAGE_MODELS) {
+                try {
+                    const data = await callGeminiImageEditWithModel(model, prompt, imageBase64, apiKey);
+                    return { model, data };
+                } catch (error) {
+                    errors.push(error.message);
+                    console.warn(error);
+                }
+            }
+
+            throw new Error(errors.join('\n\n'));
+        }
+
+        function getTextFromGeminiResponse(data) {
+            return data.candidates?.[0]?.content?.parts
+                ?.map(part => part.text || '')
+                .join('')
+                .trim();
+        }
+
+        function getImageFromGeminiResponse(data) {
+            if (data.output_image?.data) return data.output_image.data;
+            if (data.outputImage?.data) return data.outputImage.data;
+
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
+                const imageData = part.inlineData?.data || part.inline_data?.data;
+                if (imageData) return imageData;
+            }
+
+            const seen = new Set();
+            const stack = [data];
+            while (stack.length) {
+                const item = stack.pop();
+                if (!item || typeof item !== 'object' || seen.has(item)) continue;
+                seen.add(item);
+
+                const mimeType = item.mime_type || item.mimeType;
+                if (typeof item.data === 'string' && typeof mimeType === 'string' && mimeType.startsWith('image/')) {
+                    return item.data;
+                }
+
+                for (const value of Object.values(item)) {
+                    if (value && typeof value === 'object') stack.push(value);
+                }
+            }
+
+            return '';
+        }
+
+        function loadImageFromBase64(base64, mimeType = 'image/png') {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('生成图片加载失败'));
+                img.src = `data:${mimeType};base64,${base64}`;
+            });
+        }
+
+        // 1. OCR
+        ocrBtn.addEventListener('click', async () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) return showToast('❌ 请输入 API 密钥');
+            const base64Image = getCroppedBase64();
+            if (!base64Image) return showToast('⚠️ 请框选有效区域');
+
+            ocrBtn.innerHTML = '⏳ 识别中...'; ocrBtn.disabled = true;
+
+            try {
+                const data = await callGemini(TEXT_MODEL, {
+                    contents: [{ parts: [
+                        { text: "提取图片中的文字，只输出文字内容，不要任何额外解释、引号或问候。" },
+                        { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                    ]}]
+                }, apiKey);
+
+                const text = getTextFromGeminiResponse(data);
+                if (!text) throw new Error('模型没有返回可识别文字');
+                recognizedTextEl.value = text; newTextEl.value = text;
+                showToast('✅ 识别成功！');
+            } catch (err) {
+                showToast('❌ ' + err.message);
+            } finally {
+                ocrBtn.innerHTML = '✨ 识别选中区域文字'; ocrBtn.disabled = false;
+            }
+        });
+
+        function getCustomInstructionText() {
+            return customInstructionEl.value.trim();
+        }
+
+        function buildEditPrompt(patch, newText, customInstruction) {
+            const base = [
+                patch.selectionDetails,
+                "Target bounding rectangle in crop pixels: x=" + patch.target.x + ", y=" + patch.target.y + ", width=" + patch.target.w + ", height=" + patch.target.h + ".",
+                "Keep the surrounding background, perspective, lighting, texture, and poster style consistent.",
+                "Return a clean edited image with the same composition. Do not add annotations, borders, masks, explanations, or extra text."
+            ];
+
+            if (editMode === "custom") {
+                return [
+                    "Perform a local image edit according to the user requirements.",
+                    customInstruction,
+                    ...base
+                ].join("\n");
+            }
+
+            return [
+                "Edit only the selected text area of this crop.",
+                "Replace the original text with exactly: \"" + newText + "\".",
+                "Match the original font style, color, typography, spacing, and lighting as closely as possible.",
+                ...base
+            ].join("\n");
+        }
+
+        function createPromptForMode(patch, mode) {
+            const newText = newTextEl.value.trim();
+            const customInstruction = getCustomInstructionText();
+            if (mode === 'text' && !newText) throw new Error('请输入替换文字');
+            if (mode === 'custom' && !customInstruction) throw new Error('请填写自定义修改要求');
+
+            const previousMode = editMode;
+            editMode = mode;
+            const prompt = buildEditPrompt(patch, newText, customInstruction);
+            editMode = previousMode;
+            return prompt;
+        }
+
+        function setGenerateButtonsLoading(isLoading, mode = editMode, isRegenerate = false) {
+            generateButtons.forEach((button) => { button.disabled = isLoading; });
+            regenerateButtons.forEach((button) => { button.disabled = isLoading || !lastGeneration; });
+
+            if (isLoading) {
+                const text = isRegenerate ? '⏳ 正在重新生成...' : (mode === 'text' ? '⏳ 正在局部重绘...' : '⏳ 正在自定义修改...');
+                [...generateButtons, ...regenerateButtons].forEach((button) => { button.dataset.originalText = button.textContent; });
+                const activeButtons = isRegenerate ? regenerateButtons : generateButtons;
+                activeButtons.forEach((button) => { button.textContent = text; });
+                return;
+            }
+
+            generateButtons.forEach((button) => {
+                button.disabled = false;
+                button.textContent = button.dataset.generateMode === 'text' ? '重绘生成' : '执行自定义修改';
+            });
+            regenerateButtons.forEach((button) => {
+                button.textContent = '重新生成';
+            });
+            updateUtilityButtons();
+        }
+
+        async function runImageGeneration({ regenerate = false, triggerMode = editMode } = {}) {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) return showToast('❌ 请输入 API 密钥');
+
+            let patch;
+            let prompt;
+            let baseImageDataUrl;
+            let mode = triggerMode;
+            let generationRecipe = null;
+
+            if (regenerate) {
+                if (!lastGeneration) return showToast('⚠️ 暂无可重新生成的记录');
+                ({ patch, baseImageDataUrl, mode } = lastGeneration);
+                try {
+                    prompt = createPromptForMode(patch, mode);
+                } catch (error) {
+                    return showToast('⚠️ ' + error.message);
+                }
+            } else {
+                mode = triggerMode;
+                patch = getPatchPayloadImage();
+                if (!patch) return showToast('⚠️ 请先选中需要修改的区域');
+                try {
+                    prompt = createPromptForMode(patch, mode);
+                } catch (error) {
+                    return showToast('⚠️ ' + error.message);
+                }
+                baseImageDataUrl = getCurrentImageDataUrl();
+                generationRecipe = {
+                    patch: JSON.parse(JSON.stringify(patch)),
+                    baseImageDataUrl,
+                    mode
+                };
+            }
+
+            setGenerateButtonsLoading(true, mode, regenerate);
+
+            try {
+                const baseImage = await setImageFromDataUrl(baseImageDataUrl);
+                const { model, data } = await callGeminiImageEdit(prompt, patch.base64, apiKey);
+                const outputBase64 = getImageFromGeminiResponse(data);
+                if (!outputBase64) {
+                    const text = getTextFromGeminiResponse(data);
+                    throw new Error(text || `模型 ${model} 没有返回图片数据。
+返回内容：
+${summarizeJson(data)}`);
+                }
+
+                const patchImg = await loadImageFromBase64(outputBase64);
+                const mergedCanvas = mergePatchIntoCurrentImage(patchImg, patch, baseImage);
+                const newImg = await loadImageFromBase64(mergedCanvas.toDataURL('image/png').split(',')[1]);
+
+                currentImage = newImg;
+                rect = null; lassoPoints = [];
+                if (!regenerate) lastGeneration = generationRecipe;
+                recordVersion(mergedCanvas.toDataURL('image/png'), regenerate ? '重新生成' : (mode === 'text' ? '重绘生成' : '自定义修改'));
+                renderCanvas();
+                updateUtilityButtons();
+                showToast(regenerate ? `🎉 已重新生成！使用模型：${model}` : `🎉 局部替换成功！使用模型：${model}`);
+            } catch (error) {
+                console.error(error);
+                alert("重绘失败: \n" + error.message + "\n\n请把这段完整错误发给我；现在页面会列出每个候选图像模型的真实返回原因。");
+            } finally {
+                setGenerateButtonsLoading(false, mode, regenerate);
+            }
+        }
+
+        function setImageFromDataUrl(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('图片加载失败'));
+                img.src = dataUrl;
+            });
+        }
+
+        generateButtons.forEach((button) => {
+            button.addEventListener('click', () => runImageGeneration({ regenerate: false, triggerMode: button.dataset.generateMode }));
+        });
+
+        regenerateButtons.forEach((button) => {
+            button.addEventListener('click', () => runImageGeneration({ regenerate: true }));
+        });
+
+    </script>
+</body>
+</html>
